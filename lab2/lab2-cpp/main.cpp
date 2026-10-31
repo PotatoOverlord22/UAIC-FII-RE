@@ -87,7 +87,8 @@ std::string machine_name(uint16_t machine)
     switch (machine)
     {
     case 0x014C: return "x86";
-    // TODO: add x64 (0x8664) and ARM64 (0xAA64)
+    case 0x8664: return "x64";
+    case 0xAA64: return "ARM64";
     default:     return "unknown";
     }
 }
@@ -114,6 +115,19 @@ std::string data_directory_name(size_t index)
 const std::vector<FlagName> FILE_CHARACTERISTICS = {
     { 0x0001, "RELOCS_STRIPPED" },
     { 0x0002, "EXECUTABLE_IMAGE" },
+    { 0x0004, "LINE_NUMS_STRIPPED" },
+    { 0x0008, "LOCAL_SYMS_STRIPPED" },
+    { 0x0010, "AGGRESSIVE_WS_TRIM" },
+    { 0x0020, "LARGE_ADDRESS_AWARE" },
+    { 0x0080, "BYTES_REVERSED_LO" },
+    { 0x0100, "32BIT_MACHINE" },
+    { 0x0200, "DEBUG_STRIPPED" },
+    { 0x0400, "REMOVABLE_RUN_FROM_SWAP" },
+    { 0x0800, "NET_RUN_FROM_SWAP" },
+    { 0x1000, "SYSTEM" },
+    { 0x2000, "DLL" },
+    { 0x4000, "UP_SYSTEM_ONLY" },
+    { 0x8000, "BYTES_REVERSED_HI" },
 };
 
 const std::vector<FlagName> DLL_CHARACTERISTICS = {
@@ -159,8 +173,11 @@ void check_pe_signature(const Bytes& data, uint64_t offset)
 FileHeader parse_file_header(const Bytes& data, uint64_t offset)
 {
     FileHeader file;
-    // TODO: read Machine, NumberOfSections, TimeDateStamp, SizeOfOptionalHeader, Characteristics
-    throw ParseError("TODO: implement parse_file_header()");
+    file.machine                 = read_u16(data, offset);
+    file.number_of_sections      = read_u16(data, offset + 0x02);
+    file.time_date_stamp         = read_u32(data, offset + 0x04);
+    file.size_of_optional_header = read_u16(data, offset + 0x10);
+    file.characteristics         = read_u16(data, offset + 0x12);
     return file;
 }
 
@@ -335,7 +352,7 @@ void run(const std::string& path)
     print_pe_signature(pe_offset);
 
     // Step 3: the COFF file header follows the 4-byte signature.
-    uint64_t file_header_offset = 0; // TODO
+    uint64_t file_header_offset = pe_offset + 4;
     pe.file = parse_file_header(data, file_header_offset);
     print_file_header(pe.file);
 
