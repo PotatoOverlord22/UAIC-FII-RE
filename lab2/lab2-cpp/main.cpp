@@ -150,8 +150,9 @@ DosHeader parse_dos_header(const Bytes& data)
 // Reads the 4-byte signature at `offset` and throws ParseError if it is not "PE\0\0" (0x00004550).
 void check_pe_signature(const Bytes& data, uint64_t offset)
 {
-    // TODO
-    throw ParseError("TODO: implement check_pe_signature()");
+    uint32_t signature = read_u32(data, offset);
+    if (signature != 0x00004550) // PE\0\0
+        throw ParseError("invalid PE signature. Signature: " + hex(signature));
 }
 
 // `offset` is where the COFF file header starts (right after the signature).
