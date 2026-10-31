@@ -154,7 +154,10 @@ std::string section_permissions(uint32_t characteristics)
     std::string perm = "---";
     if (characteristics & 0x40000000)
         perm[0] = 'R';
-    // TODO: W and X
+    if (characteristics & 0x80000000)
+        perm[1] = 'W';
+    if (characteristics & 0x20000000)
+        perm[2] = 'X';
     return perm;
 }
 
@@ -239,10 +242,24 @@ OptionalHeader parse_optional_header(const Bytes& data, uint64_t offset, uint16_
 // `offset` is where the section table starts; each section header is 40 bytes.
 std::vector<Section> parse_sections(const Bytes& data, uint64_t offset, uint16_t count)
 {
+    uint64_t table_size = count * 40ull;
+    if (offset > data.size() || table_size > data.size() - offset)
+        throw ParseError("section table (" + std::to_string(count) + " x 40 bytes at " + hex(offset) +
+                         ") does not fit in the file (file size is " + hex(data.size()) + ")");
+
     std::vector<Section> sections;
-    // TODO: for each section read Name (read_fixed_string, 8 bytes), VirtualSize, VirtualAddress,
-    //       SizeOfRawData, PointerToRawData, Characteristics
-    throw ParseError("TODO: implement parse_sections()");
+    for (uint16_t i = 0; i < count; i++)
+    {
+        uint64_t entry = offset + i * 40ull;
+        Section s;
+        s.name                = read_fixed_string(data, entry + 0x00, 8);
+        s.virtual_size        = read_u32(data, entry + 0x08);
+        s.virtual_address     = read_u32(data, entry + 0x0C);
+        s.size_of_raw_data    = read_u32(data, entry + 0x10);
+        s.pointer_to_raw_data = read_u32(data, entry + 0x14);
+        s.characteristics     = read_u32(data, entry + 0x24);
+        sections.push_back(s);
+    }
     return sections;
 }
 
@@ -255,7 +272,12 @@ std::vector<Section> parse_sections(const Bytes& data, uint64_t offset, uint16_t
 // (some linkers write VirtualSize = 0; in that case use SizeOfRawData)
 const Section* find_section(const PeFile& pe, uint32_t rva)
 {
-    // TODO
+    for (const Section& s : pe.sections)
+    {
+        uint32_t size = s.virtual_size != 0 ? s.virtual_size : s.size_of_raw_data;
+        if (rva >= s.virtual_address && rva - s.virtual_address < size)
+            return &s;
+    }
     return nullptr;
 }
 
@@ -266,8 +288,15 @@ const Section* find_section(const PeFile& pe, uint32_t rva)
 //   - offset = PointerToRawData + delta
 std::optional<uint64_t> rva_to_offset(const PeFile& pe, uint32_t rva)
 {
-    // TODO
-    return std::nullopt;
+    if (rva < pe.optional.size_of_headers)
+        return rva;
+    const Section* s = find_section(pe, rva);
+    if (!s)
+        return std::nullopt;
+    uint32_t delta = rva - s->virtual_address;
+    if (delta >= s->size_of_raw_data)
+        return std::nullopt;
+    return static_cast<uint64_t>(s->pointer_to_raw_data) + delta;
 }
 
 // =============================================================================================
@@ -394,7 +423,7 @@ void run(const std::string& path)
     print_optional_header(pe.optional);
 
     // Step 5: the section table follows the optional header (SizeOfOptionalHeader bytes).
-    uint64_t section_table_offset = 0; // TODO
+    uint64_t section_table_offset = optional_header_offset + pe.file.size_of_optional_header;
     pe.sections = parse_sections(data, section_table_offset, pe.file.number_of_sections);
     print_sections(pe.sections);
 
